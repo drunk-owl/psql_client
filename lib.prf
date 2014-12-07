@@ -1,0 +1,4 @@
+include(common.prf)
+
+CONFIG(debug, debug|release): TARGET = $$join(TARGET,,,d)
+CONFIG += create_prl explicitlib

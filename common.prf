@@ -1,0 +1,18 @@
+DESTDIR = ./build
+
+defineReplace(buildMode) {
+    CONFIG(debug, debug|release): return(debug)
+    else: return(release)
+}
+PROJECT_DIR = $$split(_PRO_FILE_PWD_, /)
+SHADOW_BUILD_DIR = $$sprintf("/tmp/%1/%2", $$last(PROJECT_DIR), $$buildMode())
+OBJECTS_DIR = $$SHADOW_BUILD_DIR
+MOC_DIR = $$SHADOW_BUILD_DIR
+
+defineReplace(myLibs){
+    for(ml,1){
+        CONFIG(debug, debug|release): ml = $$join(ml,,,d)
+        my_libs += $$ml
+    }
+    return($$my_libs)
+}
