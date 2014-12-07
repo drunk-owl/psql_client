@@ -44,7 +44,7 @@ std::string Result::value(int col) const
 bool Result::isOk() const
 {
     ExecStatusType status=PQresultStatus(m_result);
-    return (status==PGRES_TUPLES_OK || PGRES_COMMAND_OK);
+    return (status==PGRES_TUPLES_OK || status==PGRES_COMMAND_OK);
 }
 
 std::string Result::errorString() const
