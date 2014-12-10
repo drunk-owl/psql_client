@@ -17,7 +17,7 @@ namespace PSQL
 class Result;
 class Conn;
 
-typedef std::function<void(Result*)> ResultCallback;
+typedef std::function<void(Result&&)> ResultCallback;
 
 class ConnPool
 {
@@ -33,8 +33,8 @@ public:
     DECLARE_PROPERTY(std::function<void(const std::string&)>,on_error)
 
 public:
-    void pushQuery(std::string&& query, std::vector<std::string> &&params, ResultCallback&& callback);
-    void pushQuery(std::string&& query, ResultCallback&& callback);
+    void pushQuery(std::string&& query, std::vector<std::string> &&params, ResultCallback callback);
+    void pushQuery(std::string&& query, ResultCallback callback);
 
 private:
     class QueryHolder;
@@ -42,7 +42,7 @@ private:
     void addConnection();
     void deleteLater(Conn *conn);
 
-    void onConnReady(Conn *conn, Result *res);
+    void onConnReady(Conn *conn);
     void onConnError(Conn *conn, const boost::system::error_code &err);
 
     boost::asio::io_service &m_io_service;
@@ -56,8 +56,8 @@ private:
 class ConnPool::QueryHolder
 {
 public:
-    QueryHolder(std::string&& query, std::vector<std::string>&& params, ResultCallback&& callback) :
-        m_query(std::move(query)), m_params(std::move(params)), m_callback(std::move(callback)) {}
+    QueryHolder(std::string&& query, std::vector<std::string>&& params, ResultCallback callback) :
+        m_query(std::move(query)), m_params(std::move(params)), m_callback(callback) {}
     std::string m_query;
     std::vector<std::string> m_params;
     ResultCallback m_callback;

@@ -18,13 +18,8 @@ Conn::~Conn()
     }
 }
 
-void Conn::init(std::function<void (Result *)> &&on_ready, std::function<void (const boost::system::error_code &)> &&on_error)
-{
-    m_on_ready=std::move(on_ready);
-    m_on_error=std::move(on_error);
-}
-
-void Conn::beginConnect(const std::string &host, const std::string &port, const std::string &dbname, const std::string &user, const std::string &password)
+void Conn::beginConnect(const std::string &host, const std::string &port, const std::string &dbname, const std::string &user, const std::string &password,
+                        std::function<void()> on_ready, std::function<void(const boost::system::error_code&)> on_error)
 {
     const char *const keywords[6] = {"host", "port", "dbname", "user", "password", 0};
     const char *const values[6] = {host.c_str(), port.c_str(), dbname.c_str(), user.c_str(), password.c_str(), 0};
@@ -36,12 +31,15 @@ void Conn::beginConnect(const std::string &host, const std::string &port, const 
     if(PQstatus(m_conn)==CONNECTION_BAD)
         throw std::string(PQerrorMessage(m_conn));
 
+    m_on_ready=on_ready;
+    m_on_error=on_error;
+
     m_state=Connecting;
     initSocket(PQsocket(m_conn));
     processConnecting();
 }
 
-void Conn::beginQuery(const std::string &query, const std::vector<std::string> &params)
+void Conn::beginQuery(const std::string &query, const std::vector<std::string> &params, std::function<void(Result&&)> on_result)
 {
     assert(m_state==Idle);
 
@@ -60,6 +58,9 @@ void Conn::beginQuery(const std::string &query, const std::vector<std::string> &
         m_on_error(boost::system::error_code());
         return;
     }
+
+    m_on_result=on_result;
+
     m_state=Sending;
     processSending();
 }
@@ -84,7 +85,7 @@ void Conn::processConnecting()
         return;
     case PGRES_POLLING_OK:
         m_state=Idle;
-        m_on_ready(0);
+        m_on_ready();
         return;
     default:
         break;
@@ -124,9 +125,8 @@ void Conn::processReceiving()
     {
         m_state=Idle;
 
-        Result *result=new Result(PQgetResult(m_conn));
-        assert(PQgetResult(m_conn)==0);
-        m_on_ready(result);
+        m_on_result(std::move(Result(PQgetResult(m_conn))));
+        m_on_ready();
     }
 }
 

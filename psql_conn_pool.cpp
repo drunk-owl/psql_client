@@ -13,15 +13,15 @@ ConnPool::ConnPool(boost::asio::io_service &io_service) :
 {
 }
 
-void ConnPool::pushQuery(std::string &&query, std::vector<std::string> &&params, ResultCallback &&callback)
+void ConnPool::pushQuery(std::string &&query, std::vector<std::string> &&params, ResultCallback callback)
 {
-    QueryHolder *qh=new QueryHolder(std::move(query), std::move(params), std::move(callback));
+    QueryHolder *qh=new QueryHolder(std::move(query), std::move(params), callback);
     if(!m_idle_conns.empty())
     {
         Conn *conn=m_idle_conns.back();
         m_idle_conns.pop_back();
         m_busy_conns.insert(std::pair<Conn*, QueryHolder*>(conn, qh));
-        conn->beginQuery(qh->m_query, qh->m_params);
+        conn->beginQuery(qh->m_query, qh->m_params, qh->m_callback);
     }
     else
     {
@@ -34,9 +34,9 @@ void ConnPool::pushQuery(std::string &&query, std::vector<std::string> &&params,
     }
 }
 
-void ConnPool::pushQuery(std::string &&query, ResultCallback &&callback)
+void ConnPool::pushQuery(std::string &&query, ResultCallback callback)
 {
-    pushQuery(std::move(query), std::move(std::vector<std::string>()), std::move(callback));
+    pushQuery(std::move(query), std::move(std::vector<std::string>()), callback);
 }
 
 void ConnPool::addConnection()
@@ -51,12 +51,11 @@ void ConnPool::addConnection()
         conn=new TcpConn(m_io_service);
     }
 
-    conn->init(std::bind(&ConnPool::onConnReady, this, conn, std::placeholders::_1),
-               std::bind(&ConnPool::onConnError, this, conn, std::placeholders::_1));
-
     m_new_conns.push_back(conn);
 
-    conn->beginConnect(m_host, m_port, m_dbname, m_user, m_password);
+    conn->beginConnect(m_host, m_port, m_dbname, m_user, m_password,
+                       std::bind(&ConnPool::onConnReady, this, conn),
+                       std::bind(&ConnPool::onConnError, this, conn, std::placeholders::_1));
 }
 
 void ConnPool::deleteLater(Conn *conn)
@@ -64,18 +63,17 @@ void ConnPool::deleteLater(Conn *conn)
     m_dd_tmr.async_wait([conn](const boost::system::error_code&){delete conn;});
 }
 
-void ConnPool::onConnReady(Conn *conn, Result *res)
+void ConnPool::onConnReady(Conn *conn)
 {
-    if(res)
+    auto it=m_busy_conns.find(conn);
+    if(it==m_busy_conns.end())
     {
-        auto it=m_busy_conns.find(conn);
-        it->second->m_callback(res);
-        delete it->second;
-        m_busy_conns.erase(it);
+        m_new_conns.remove(conn);
     }
     else
     {
-        m_new_conns.remove(conn);
+        delete it->second;
+        m_busy_conns.erase(it);
     }
 
     if(!m_query_queue.empty())
@@ -83,7 +81,7 @@ void ConnPool::onConnReady(Conn *conn, Result *res)
         QueryHolder *qh=m_query_queue.front();
         m_query_queue.pop_front();
         m_busy_conns.insert(std::pair<Conn*, QueryHolder*>(conn, qh));
-        conn->beginQuery(qh->m_query, qh->m_params);
+        conn->beginQuery(qh->m_query, qh->m_params, qh->m_callback);
     }
     else
     {
@@ -120,6 +118,7 @@ void ConnPool::onConnError(Conn *conn, const boost::system::error_code &err)
     {
         m_query_queue.push_front(it->second);
         deleteLater(conn);
+        m_busy_conns.erase(it);
 
         addConnection();
     }

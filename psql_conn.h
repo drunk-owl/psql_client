@@ -25,9 +25,9 @@ public:
     Conn(boost::asio::io_service &io_service);
     virtual ~Conn();
 
-    void init(std::function<void(Result*)> &&on_ready, std::function<void(const boost::system::error_code&)> &&on_error);
-    void beginConnect(const std::string &host, const std::string &port, const std::string &dbname, const std::string &user, const std::string &password);
-    void beginQuery(const std::string &query, const std::vector<std::string> &params);
+    void beginConnect(const std::string &host, const std::string &port, const std::string &dbname, const std::string &user, const std::string &password,
+                      std::function<void()> on_ready, std::function<void(const boost::system::error_code&)> on_error);
+    void beginQuery(const std::string &query, const std::vector<std::string> &params, std::function<void(Result&&)> on_result);
 
     std::string errorString() const;
 
@@ -47,8 +47,9 @@ private:
     void processReceiving();
 
     PGconn *m_conn;
-    std::function<void(Result*)> m_on_ready;
+    std::function<void()> m_on_ready;
     std::function<void(const boost::system::error_code&)> m_on_error;
+    std::function<void(Result&&)> m_on_result;
     State m_state;
 
 };
