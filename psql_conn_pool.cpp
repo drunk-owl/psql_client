@@ -1,6 +1,5 @@
 #include "psql_conn_pool.h"
-#include "psql_tcp_conn.h"
-#include "psql_uds_conn.h"
+#include "psql_conn.h"
 #include "psql_result.h"
 
 using namespace PSQL;
@@ -41,18 +40,8 @@ void ConnPool::pushQuery(std::string &&query, ResultCallback callback)
 
 void ConnPool::addConnection()
 {
-    Conn *conn;
-    if(m_host.empty() || m_host.front()=='/')
-    {
-        conn=new UdsConn(m_io_service);
-    }
-    else
-    {
-        conn=new TcpConn(m_io_service);
-    }
-
+    Conn *conn=new Conn(m_io_service);
     m_new_conns.push_back(conn);
-
     conn->beginConnect(m_host, m_port, m_dbname, m_user, m_password,
                        std::bind(&ConnPool::onConnReady, this, conn),
                        std::bind(&ConnPool::onConnError, this, conn, std::placeholders::_1));

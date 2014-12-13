@@ -9,16 +9,12 @@ HEADERS += \
     psql_conn_pool.h \
     property.h \
     psql_conn.h \
-    psql_result.h \
-    psql_tcp_conn.h \
-    psql_uds_conn.h
+    psql_result.h
 
 SOURCES += \
     psql_conn_pool.cpp \
     psql_conn.cpp \
-    psql_result.cpp \
-    psql_tcp_conn.cpp \
-    psql_uds_conn.cpp
+    psql_result.cpp
 
 QMAKE_CXXFLAGS += -std=gnu++11
 

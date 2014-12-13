@@ -6,12 +6,17 @@
 using namespace PSQL;
 
 Conn::Conn(boost::asio::io_service &io_service) :
-    m_io_service(io_service), m_conn(0)
+    m_io_service(io_service), m_conn(0), m_sock(0)
 {
 }
 
 Conn::~Conn()
 {
+    if(m_sock)
+    {
+        delete m_sock;
+    }
+
     if(m_conn)
     {
         PQfinish(m_conn);
@@ -21,6 +26,8 @@ Conn::~Conn()
 void Conn::beginConnect(const std::string &host, const std::string &port, const std::string &dbname, const std::string &user, const std::string &password,
                         std::function<void()> on_ready, std::function<void(const boost::system::error_code&)> on_error)
 {
+    assert(m_conn==0);
+
     const char *const keywords[6] = {"host", "port", "dbname", "user", "password", 0};
     const char *const values[6] = {host.c_str(), port.c_str(), dbname.c_str(), user.c_str(), password.c_str(), 0};
 
@@ -31,11 +38,12 @@ void Conn::beginConnect(const std::string &host, const std::string &port, const 
     if(PQstatus(m_conn)==CONNECTION_BAD)
         throw std::string(PQerrorMessage(m_conn));
 
+    m_sock=new boost::asio::posix::stream_descriptor(m_io_service);
+
     m_on_ready=on_ready;
     m_on_error=on_error;
 
     m_state=Connecting;
-    initSocket(PQsocket(m_conn));
     processConnecting();
 }
 
@@ -126,12 +134,29 @@ void Conn::processReceiving()
         m_state=Idle;
 
         m_on_result(std::move(Result(PQgetResult(m_conn))));
+        PGresult *zero_res=PQgetResult(m_conn);
+        assert(zero_res==0);
+
         m_on_ready();
     }
 }
 
+void Conn::pollReading()
+{
+    m_sock->assign(PQsocket(m_conn));
+    m_sock->async_read_some(boost::asio::null_buffers(), std::bind(&Conn::onReadyRead, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void Conn::pollWriting()
+{
+    m_sock->assign(PQsocket(m_conn));
+    m_sock->async_write_some(boost::asio::null_buffers(), std::bind(&Conn::onReadyWrite, this, std::placeholders::_1, std::placeholders::_2));
+}
+
 void Conn::onReadyRead(const boost::system::error_code &error_code, std::size_t)
 {
+    m_sock->release();
+
     if(error_code)
     {
         m_on_error(error_code);
@@ -154,6 +179,8 @@ void Conn::onReadyRead(const boost::system::error_code &error_code, std::size_t)
 
 void Conn::onReadyWrite(const boost::system::error_code &error_code, std::size_t)
 {
+    m_sock->release();
+
     if(error_code)
     {
         m_on_error(error_code);
